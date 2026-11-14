@@ -1,0 +1,40 @@
+
+# Virtual environment
+cnn-env/
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Downloaded datasets
+data/
+
+# Trained models
+models/*.keras
+models/*.h5
+models/*.weights.h5
+
+# Environment variables and secrets
+.env
+.env.*
+
+# IDE settings
+.idea/
+.vscode/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
