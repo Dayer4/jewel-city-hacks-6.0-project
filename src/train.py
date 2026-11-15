@@ -1,152 +1,76 @@
+from pathlib import Path
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from pathlib import Path
-from tqdm import tqdm
 
-from data_loader import train_loader, test_loader
-from model import CharacterCNN
-
-
-# -------------------------
-# Configuration
-# -------------------------
+from src.data_loader import train_loader, test_loader
+from src.model import CharacterCNN
 
 EPOCHS = 10
 LEARNING_RATE = 0.001
-NUM_CLASSES = 62
 
-# Automatically select Apple GPU or CPU
-if torch.backends.mps.is_available():
-    device = torch.device("mps")
-elif torch.cuda.is_available():
-    device = torch.device("cuda")
-else:
-    device = torch.device("cpu")
-
-print(f"Training device: {device}")
-
-# -------------------------
-# Initialize model
-# -------------------------
-
-model = CharacterCNN(num_classes=NUM_CLASSES).to(device)
-
-criterion = nn.CrossEntropyLoss()
-
-optimizer = optim.Adam(
-    model.parameters(),
-    lr=LEARNING_RATE
-)
-
-# -------------------------
-# Checkpoint directory
-# -------------------------
-
-checkpoint_dir = Path("checkpoints")
-checkpoint_dir.mkdir(exist_ok=True)
-
-best_accuracy = 0.0
+CHECKPOINT_DIR = Path(__file__).resolve().parent.parent / "checkpoints"
+CHECKPOINT_PATH = CHECKPOINT_DIR / "best_model.pth"
 
 
-# -------------------------
-# Evaluation function
-# -------------------------
+def get_device() -> torch.device:
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu")
 
-def evaluate(model, loader):
 
-    model.eval()
-
+def evaluate(model, loader, device) -> float:
+    """Return accuracy (0-1) of the model on a data loader."""
+    model.eval()  # turn off dropout
     correct = 0
     total = 0
-    total_loss = 0
-
-    with torch.no_grad():
-
+    with torch.no_grad():  # no learning, just measuring
         for images, labels in loader:
-
-            images = images.to(device)
-            labels = labels.to(device)
-
-            outputs = model(images)
-
-            loss = criterion(outputs, labels)
-
-            total_loss += loss.item()
-
-            predictions = outputs.argmax(dim=1)
-
+            images, labels = images.to(device), labels.to(device)
+            predictions = model(images).argmax(dim=1)
             correct += (predictions == labels).sum().item()
             total += labels.size(0)
-
-    accuracy = 100 * correct / total
-    average_loss = total_loss / len(loader)
-
-    return accuracy, average_loss
+    return correct / total
 
 
-# -------------------------
-# Training loop
-# -------------------------
+def main():
+    device = get_device()
+    print(f"Training on: {device}")
 
-for epoch in range(EPOCHS):
+    model = CharacterCNN(num_classes=62).to(device)
+    loss_function = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-    model.train()
+    CHECKPOINT_DIR.mkdir(exist_ok=True)
+    best_accuracy = 0.0
 
-    running_loss = 0
-    correct = 0
-    total = 0
+    for epoch in range(1, EPOCHS + 1):
+        model.train()  # turn dropout back on
+        running_loss = 0.0
 
-    for batch_idx, (images, labels) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch + 1}/{EPOCHS}")):
+        for images, labels in train_loader:
+            images, labels = images.to(device), labels.to(device)
 
-        images = images.to(device)
-        labels = labels.to(device)
+            optimizer.zero_grad()                      # clear old gradients
+            loss = loss_function(model(images), labels)
+            loss.backward()                            # compute how to improve
+            optimizer.step()                           # apply the improvement
 
-        # Reset gradients
-        optimizer.zero_grad()
+            running_loss += loss.item()
 
-        # Forward pass
-        outputs = model(images)
+        test_accuracy = evaluate(model, test_loader, device)
+        avg_loss = running_loss / len(train_loader)
+        print(f"Epoch {epoch}/{EPOCHS}  loss: {avg_loss:.4f}  test accuracy: {test_accuracy:.2%}")
 
-        loss = criterion(outputs, labels)
+        # Only keep the checkpoint if it's the best so far.
+        if test_accuracy > best_accuracy:
+            best_accuracy = test_accuracy
+            torch.save(model.state_dict(), CHECKPOINT_PATH)
+            print(f"  saved new best model ({best_accuracy:.2%})")
 
-        # Backpropagation
-        loss.backward()
 
-        # Update weights
-        optimizer.step()
-
-        running_loss += loss.item()
-
-        predictions = outputs.argmax(dim=1)
-
-        correct += (predictions == labels).sum().item()
-        total += labels.size(0)
-
-    train_accuracy = 100 * correct / total
-    train_loss = running_loss / len(train_loader)
-
-    # Evaluate
-    test_accuracy, test_loss = evaluate(model, test_loader)
-
-    print(f"\nEpoch [{epoch + 1}/{EPOCHS}]")
-    print(f"Training Loss: {train_loss:.4f}")
-    print(f"Training Accuracy: {train_accuracy:.2f}%")
-    print(f"Test Loss: {test_loss:.4f}")
-    print(f"Test Accuracy: {test_accuracy:.2f}%")
-
-    # Save best model
-    if test_accuracy > best_accuracy:
-
-        best_accuracy = test_accuracy
-
-        torch.save(
-            model.state_dict(),
-            checkpoint_dir / "best_model.pth"
-        )
-
-        print("New best model saved!")
-
-print("\nTraining complete.")
-print(f"Best test accuracy: {best_accuracy:.2f}%")
+if __name__ == "__main__":
+    main()

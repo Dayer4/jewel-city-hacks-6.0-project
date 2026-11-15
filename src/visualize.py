@@ -1,29 +1,14 @@
-
-import cv2
 import matplotlib.pyplot as plt
 
+from src.data_loader import train_dataset
 
-def show_preprocessing(original_path, processed):
+fig, axes = plt.subplots(2, 5, figsize=(12, 5))
 
-    original = cv2.imread(original_path)
+for i, ax in enumerate(axes.flat):
+    image, label = train_dataset[i]
+    ax.imshow(image.squeeze(), cmap="gray")
+    ax.set_title(f"Label: {label}")
+    ax.axis("off")
 
-    if original is None:
-        raise ValueError("Could not load original image")
-
-    original = cv2.cvtColor(
-        original,
-        cv2.COLOR_BGR2RGB
-    )
-
-    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-
-    axes[0].imshow(original)
-    axes[0].set_title("Original Image")
-    axes[0].axis("off")
-
-    axes[1].imshow(processed, cmap="gray")
-    axes[1].set_title("28x28 Processed Image")
-    axes[1].axis("off")
-
-    plt.tight_layout()
-    plt.show()
+plt.tight_layout()
+plt.show()
